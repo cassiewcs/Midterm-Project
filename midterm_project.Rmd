@@ -2,28 +2,29 @@
 title: "Midterm_Project Loan"
 output: pdf_document
 ---
-##Data Introduction
+###Data Introduction
 The dataset contains complete loan data for all loans issued through 2012-2013 stated, including the current loan status (Current, Late, Fully Paid, etc.) and latest payment information. 
-The data can be download:https://resources.lendingclub.com/LoanStats3b.csv.zip  
-##Project Introduction
+The data can be download:https://resources.lendingclub.com/LoanStats3b.csv.zip    
+
+###Project Introduction    
+
 1.Data manipulation    
-2.Exploratory Data Analysis    
+2.Exploratory Data Analysis      
+Explore the relationship between loan characteristics,personal income and credit.
 3.Modeling    
-Explore the relationship between loan characteristics,personal income and credit.     
 Try to apply regresssion to predict loan status.
 
 ```{r,include=FALSE}
-library(tidyr)
-library(dplyr)
-library(readr)
-library(ggplot2)
-library(lubridate)
 library(arm)
+library(dplyr)
+library(ggplot2)
+library(readr)
+library(lubridate)
+
 ```
 
-##Data Manipulation
-```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+###Data Manipulation
+```{r, include=FALSE}
 data<-read.csv("LoanStats3b.csv",header = TRUE)
 data<-data.frame(data)
 #since all the id and member_id are NAs,
@@ -40,7 +41,8 @@ datap <- select(data,
          grade, annual_inc,verification_status,
    dti,home_ownership,application_type,issue_d
                        )
-##For numeric analysis purpose, we need to convert some of the chr object to numeric, e.g. interest rate displaying as a charactor '11.5%' need to be converted to 0.115 as a numeric value
+#For numeric analysis purpose, we need to convert some of the chr object to numeric,
+#e.g. interest rate displaying as a charactor '11.5%' need to be converted to 0.115 as a numeric value
 mydata<-datap
 mydata$application_type<-as.factor(mydata$application_type)
 mydata$term <- as.numeric(substr(data$term, 1,3))
@@ -51,11 +53,15 @@ mydata<-filter(mydata,application_type=="Individual")
 ```
 
 
-##Exploratory Data Analysis
+###Exploratory Data Analysis    
+
+##Loan amount distribution
 ```{r}
 hist(mydata$loan_amnt)
-ggplot(mydata, aes(loan_amnt, col = grade)) + geom_histogram(bins = 50) + facet_grid(grade ~ .)+labs(title ='Loan amount distribution by grade')
+ggplot(mydata, aes(loan_amnt, col = grade)) + geom_histogram(bins = 50) +
+  facet_grid(grade ~ .)+labs(title ='Loan amount distribution by grade')
 ```
+    
 According to the plot,clients with higher grades (A, B, C and D) tend to have received more loans compared to those with lower grades (E, F and G).And for A,B,C and D grades,the most possible loan amount is 10000.
 
 ```{r}
@@ -64,14 +70,16 @@ loan_amnt_by_month <- aggregate(loan_amnt ~ issue_d, data = mydata, sum)
 ggplot(loan_amnt_by_month, aes(issue_d, loan_amnt)) + geom_bar(stat = "identity")+labs(title ='Loan amount distribution by issue date')
 colSums(is.na(mydata))
 ```
-According to the plot,the loan amount increases steadily as time goes,except for the period near 2014,which is probably the consequence of lacking loan amount valid until or after the last period of 2013-2014.
+According to the plot,the loan amount increases steadily as time goes,except for the period near 2014,which is probably the consequence of lacking loan amount valid until or after the last period of 2013-2014.    
 
+##Interest rate 
 ```{r}
 ggplot(mydata, aes(int_rate)) + geom_density(aes(fill = grade)) + facet_grid(grade ~ .)+ 
   labs(title ='Interest rate distribution by grade')
 ```
-Apparently, interest rates increase as the risk goes up,and the grades are assigned based on risk, so the interest rates changes as the grades changes.
+Apparently, interest rates increase as the risk goes up,and the grades are assigned based on risk, so the interest rates changes as the grades changes.     
 
+##DTI ratio
 ```{r}
 summary(mydata$dti)
 ggplot( mydata, aes(dti/100)) + geom_density(aes(fill = grade))+
@@ -82,7 +90,7 @@ DTI:A ratio calculated using the borrower???s total monthly debt payments on the
 According to the plot,the DTI ratio tend to increase as the grades go up.For high-grade loan, the majority of the borrowers will not commit more than 20% of the income on debt while low-grade borrowers do tend to loan more. 
 
 
-Total loan amount for each loan status
+##Total loan amount for each loan status
 ```{r}
 loan_amnt_by_status <- aggregate(loan_amnt ~ loan_status, data = mydata, sum)
 ggplot(loan_amnt_by_status, aes(loan_status, loan_amnt, fill = loan_status)) + geom_bar(stat = "identity") + scale_x_discrete(breaks=NULL)
@@ -91,8 +99,9 @@ ggplot(loan_amnt_by_status, aes(loan_status, loan_amnt, fill = loan_status)) + g
 ggplot(mydata, aes(loan_status, loan_amnt, fill = loan_status)) + geom_boxplot() + scale_x_discrete(breaks=NULL)+
   labs(title ='Loan amount for each loan status')
 ```
-According to the plot,apparently most of loans are fully paid,and there exist differnces of loan amount between loan status.
+According to the plot,apparently most of loans are fully paid,and there exist differnces of loan amount between loan status.    
 
+##Home ownership,committed amount and loan status
 ```{r}
 ggplot(data = mydata) + 
   geom_bar(mapping = aes(x = loan_status, fill = home_ownership))
@@ -105,19 +114,25 @@ According to the plot,the relationships between loan status,home ownership and t
 ```{r}
 ggplot(mydata, aes(annual_inc, funded_amnt_inv)) +
   geom_point(aes(colour = grade))  +
-  geom_smooth()
+  geom_smooth()+
+  labs(title ='Annual income VS Committede amount ')
 #when delete the outliers
 mydata1 <- filter(mydata, annual_inc < 500000)
 #Replot and group by grades
 ggplot(mydata1, aes(annual_inc, funded_amnt_inv)) +
   geom_point(aes(colour = grade))  +
-  geom_smooth()+ facet_grid(. ~ grade)
+  geom_smooth()+ facet_grid(. ~ grade)+
+  labs(title ='Annual income VS Committede amount by grade')
 ```
-According to the plot,there exists definite relationship between income and committed amount,which means cliens with higher income tend to be able to borrow more money.
+    
+According to the plot,there exists definite relationship between income and committed amount,which means cliens with higher income tend to be able to borrow more money.    
+
+##Verified income
 ```{r}
 ggplot(data = mydata) + 
   geom_bar(mapping = aes(x = loan_status, fill = verification_status))
 ```
+    
 If delete the incomes that are not vertified
 ```{r}
 library(dplyr)
@@ -128,6 +143,9 @@ ggplot(data2, aes(annual_inc, funded_amnt_inv)) +
   geom_point(aes(colour = grade))  +
   geom_smooth()+facet_grid(. ~ grade)
 ```
+    
+According to the plot there evidently exist relationship between annual income and committed amount for the majority of clients with relatively lower annual income.
+
 
 ###Modeling 
 According to the data and my interest,I'd like to predict the loan status by regression.
@@ -143,6 +161,7 @@ fit1 <- glm(loan_paid~loan_amnt+funded_amnt_inv+term+int_rate+installment+grade+
 summary(fit1)
 binnedplot(fitted(fit1),residuals(fit1,type="response"))
 ```
+    
 According to the binned residual, the model need improvement.
 According to the EDA,there are interactions can be added to the model.
 ```{r}
@@ -150,25 +169,29 @@ fit2<-glm(loan_paid~loan_amnt+funded_amnt_inv+term+int_rate+installment+grade+an
 summary(fit2)
 binnedplot(fitted(fit2),residuals(fit2,type="response"))
 ```
+    
 Improved.
 ```{r}
 fit3<-glm(loan_paid~loan_amnt+funded_amnt_inv+term+int_rate+installment+grade+annual_inc+dti+home_ownership+grade*dti,data=mydata,family=binomial)
 summary(fit3)
 binnedplot(fitted(fit3),residuals(fit3,type="response"))
 ```
+    
 Not improved.
 ```{r}
 fit4<-glm(loan_paid~loan_amnt+funded_amnt_inv+term+int_rate+installment+grade+annual_inc+dti+home_ownership+annual_inc*funded_amnt_inv,data=mydata,family=binomial)
 summary(fit4)
 binnedplot(fitted(fit4),residuals(fit4,type="response"))
 ```
+    
 Improved.
 ```{r}
-##delete installment as it is insignificant,delete outliers of annual income,and add interactions.
+#delete installment as it is insignificant,delete outliers of annual income,and add interactions.
 fit<-glm(loan_paid~loan_amnt+funded_amnt_inv+term+int_rate+grade+annual_inc+dti+home_ownership+grade*int_rate+annual_inc*funded_amnt_inv,data=mydata1,family=binomial)
 summary(fit)
 binnedplot(fitted(fit),residuals(fit,type="response"))
 ```
+    
 So we can predict the probability of loan getting paid by the logistic regression.
 ##Multinomial Regression
 ```{r}
@@ -176,9 +199,10 @@ library(VGAM)
 mtn<- vglm(loan_paid~loan_amnt+funded_amnt_inv+term+int_rate+grade+annual_inc+dti+home_ownership,data=mydata,family=multinomial)
 summary(mtn)
 ```
-Basically,term,interest rate,high grade seem to improve the payment of loan.
+      
+Basically,term,interest rate,high grade seem to improve the probability of payment of loan.
 ```{r}
-##delete installment,outliers of annual income,and add interactions.
+#delete installment,outliers of annual income,and add interactions.
 mtn1<- vglm(loan_paid~loan_amnt+funded_amnt_inv+term+int_rate+grade+annual_inc+dti+home_ownership+grade*int_rate+annual_inc*funded_amnt_inv,data=mydata1,family=multinomial)
 summary(mtn1)
 AIC(mtn)
@@ -231,4 +255,9 @@ fixef(glmm2)
 head(coef(glmm2)$grade)
 lmerTest::summary(glmm1)
 ```
+    
+###Conclusion
+After the analysis,it is appropriate to point out that the loan status is influenced by a lot of variables.And in this project only part of the relative factors were taken into account,which made it inevitably imperfect.    
+As for loan characteristics,factors like loan amount,funded amount,term,interest rate and issue date are included,and for personal information and credit,factors like installment,grade, annual income,DTI ratio,home ownership are put under consideration.And relationships between interest rate and grade,loan amount and issue date,DTI and grade,income and funded amount were shown during EDA,and part of them turned out to have effect on regression for predicting the probability of fully paying the loan.        
+Multiple models were applied to predict the probability,and some of them turned out to fit well but is capable of improvement,and predictions are able to be made by the improved regression models.
 
