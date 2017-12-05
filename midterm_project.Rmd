@@ -1,0 +1,234 @@
+---
+title: "Midterm_Project Loan"
+output: pdf_document
+---
+##Data Introduction
+The dataset contains complete loan data for all loans issued through 2012-2013 stated, including the current loan status (Current, Late, Fully Paid, etc.) and latest payment information. 
+The data can be download:https://resources.lendingclub.com/LoanStats3b.csv.zip  
+##Project Introduction
+1.Data manipulation    
+2.Exploratory Data Analysis    
+3.Modeling    
+Explore the relationship between loan characteristics,personal income and credit.     
+Try to apply regresssion to predict loan status.
+
+```{r,include=FALSE}
+library(tidyr)
+library(dplyr)
+library(readr)
+library(ggplot2)
+library(lubridate)
+library(arm)
+```
+
+##Data Manipulation
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+data<-read.csv("LoanStats3b.csv",header = TRUE)
+data<-data.frame(data)
+#since all the id and member_id are NAs,
+#I generate id number for each rows
+data$id<- seq.int(nrow(data))
+#Select varibles:estiamte the future loan status by the loan characteristics,personal income and credit record.
+sapply(data[1,], class)
+
+```
+
+```{r}
+datap <- select(data,
+                id,loan_amnt,loan_status,funded_amnt_inv,term,int_rate,installment,
+         grade, annual_inc,verification_status,
+   dti,home_ownership,application_type,issue_d
+                       )
+##For numeric analysis purpose, we need to convert some of the chr object to numeric, e.g. interest rate displaying as a charactor '11.5%' need to be converted to 0.115 as a numeric value
+mydata<-datap
+mydata$application_type<-as.factor(mydata$application_type)
+mydata$term <- as.numeric(substr(data$term, 1,3))
+mydata$int_rate <- as.numeric(gsub("%", "", data$int_rate)) / 100
+#Because of the project capability,I choose the individual application for further analysis.
+mydata<-filter(mydata,application_type=="Individual")
+#It turns out that all the application type is individual.
+```
+
+
+##Exploratory Data Analysis
+```{r}
+hist(mydata$loan_amnt)
+ggplot(mydata, aes(loan_amnt, col = grade)) + geom_histogram(bins = 50) + facet_grid(grade ~ .)+labs(title ='Loan amount distribution by grade')
+```
+According to the plot,clients with higher grades (A, B, C and D) tend to have received more loans compared to those with lower grades (E, F and G).And for A,B,C and D grades,the most possible loan amount is 10000.
+
+```{r}
+mydata$issue_d <- dmy(paste0("01-",mydata$issue_d))
+loan_amnt_by_month <- aggregate(loan_amnt ~ issue_d, data = mydata, sum)
+ggplot(loan_amnt_by_month, aes(issue_d, loan_amnt)) + geom_bar(stat = "identity")+labs(title ='Loan amount distribution by issue date')
+colSums(is.na(mydata))
+```
+According to the plot,the loan amount increases steadily as time goes,except for the period near 2014,which is probably the consequence of lacking loan amount valid until or after the last period of 2013-2014.
+
+```{r}
+ggplot(mydata, aes(int_rate)) + geom_density(aes(fill = grade)) + facet_grid(grade ~ .)+ 
+  labs(title ='Interest rate distribution by grade')
+```
+Apparently, interest rates increase as the risk goes up,and the grades are assigned based on risk, so the interest rates changes as the grades changes.
+
+```{r}
+summary(mydata$dti)
+ggplot( mydata, aes(dti/100)) + geom_density(aes(fill = grade))+
+  facet_grid(grade ~ .)+ xlim(0,0.5) +
+  labs(title ='DTI distribution by grade')
+```
+DTI:A ratio calculated using the borrower???s total monthly debt payments on the total debt obligations, excluding mortgage and the requested LC loan, divided by the borrower???s self-reported monthly income.
+According to the plot,the DTI ratio tend to increase as the grades go up.For high-grade loan, the majority of the borrowers will not commit more than 20% of the income on debt while low-grade borrowers do tend to loan more. 
+
+
+Total loan amount for each loan status
+```{r}
+loan_amnt_by_status <- aggregate(loan_amnt ~ loan_status, data = mydata, sum)
+ggplot(loan_amnt_by_status, aes(loan_status, loan_amnt, fill = loan_status)) + geom_bar(stat = "identity") + scale_x_discrete(breaks=NULL)
+  
+#Distribution of the loan amount for each status
+ggplot(mydata, aes(loan_status, loan_amnt, fill = loan_status)) + geom_boxplot() + scale_x_discrete(breaks=NULL)+
+  labs(title ='Loan amount for each loan status')
+```
+According to the plot,apparently most of loans are fully paid,and there exist differnces of loan amount between loan status.
+
+```{r}
+ggplot(data = mydata) + 
+  geom_bar(mapping = aes(x = loan_status, fill = home_ownership))
+ggplot(data = mydata) +
+  geom_bar(stat = "identity", mapping=aes(x = loan_status,y =funded_amnt_inv, fill = home_ownership),position = "dodge")
+
+```
+According to the plot,the relationships between loan status,home ownership and total amount committed are complicated.Clients don't own home or other tend to be committed less loan amount by investors.
+
+```{r}
+ggplot(mydata, aes(annual_inc, funded_amnt_inv)) +
+  geom_point(aes(colour = grade))  +
+  geom_smooth()
+#when delete the outliers
+mydata1 <- filter(mydata, annual_inc < 500000)
+#Replot and group by grades
+ggplot(mydata1, aes(annual_inc, funded_amnt_inv)) +
+  geom_point(aes(colour = grade))  +
+  geom_smooth()+ facet_grid(. ~ grade)
+```
+According to the plot,there exists definite relationship between income and committed amount,which means cliens with higher income tend to be able to borrow more money.
+```{r}
+ggplot(data = mydata) + 
+  geom_bar(mapping = aes(x = loan_status, fill = verification_status))
+```
+If delete the incomes that are not vertified
+```{r}
+library(dplyr)
+data2= filter(mydata,verification_status!='Not Verified')
+nrow(data2)
+#Replot and group by grades
+ggplot(data2, aes(annual_inc, funded_amnt_inv)) +
+  geom_point(aes(colour = grade))  +
+  geom_smooth()+facet_grid(. ~ grade)
+```
+
+###Modeling 
+According to the data and my interest,I'd like to predict the loan status by regression.
+So I define loan status as paid or not,and labelled as 1 or 0.
+```{r}
+mydata$loan_paid <- factor(ifelse(mydata$loan_status=="Fully Paid",1,0))
+mydata1$loan_paid <- factor(ifelse(mydata1$loan_status=="Fully Paid",1,0))
+```
+
+##Logistic Model
+```{r}
+fit1 <- glm(loan_paid~loan_amnt+funded_amnt_inv+term+int_rate+installment+grade+annual_inc+dti+home_ownership,data=mydata,family=binomial)
+summary(fit1)
+binnedplot(fitted(fit1),residuals(fit1,type="response"))
+```
+According to the binned residual, the model need improvement.
+According to the EDA,there are interactions can be added to the model.
+```{r}
+fit2<-glm(loan_paid~loan_amnt+funded_amnt_inv+term+int_rate+installment+grade+annual_inc+dti+home_ownership+grade*int_rate,data=mydata,family=binomial)
+summary(fit2)
+binnedplot(fitted(fit2),residuals(fit2,type="response"))
+```
+Improved.
+```{r}
+fit3<-glm(loan_paid~loan_amnt+funded_amnt_inv+term+int_rate+installment+grade+annual_inc+dti+home_ownership+grade*dti,data=mydata,family=binomial)
+summary(fit3)
+binnedplot(fitted(fit3),residuals(fit3,type="response"))
+```
+Not improved.
+```{r}
+fit4<-glm(loan_paid~loan_amnt+funded_amnt_inv+term+int_rate+installment+grade+annual_inc+dti+home_ownership+annual_inc*funded_amnt_inv,data=mydata,family=binomial)
+summary(fit4)
+binnedplot(fitted(fit4),residuals(fit4,type="response"))
+```
+Improved.
+```{r}
+##delete installment as it is insignificant,delete outliers of annual income,and add interactions.
+fit<-glm(loan_paid~loan_amnt+funded_amnt_inv+term+int_rate+grade+annual_inc+dti+home_ownership+grade*int_rate+annual_inc*funded_amnt_inv,data=mydata1,family=binomial)
+summary(fit)
+binnedplot(fitted(fit),residuals(fit,type="response"))
+```
+So we can predict the probability of loan getting paid by the logistic regression.
+##Multinomial Regression
+```{r}
+library(VGAM)
+mtn<- vglm(loan_paid~loan_amnt+funded_amnt_inv+term+int_rate+grade+annual_inc+dti+home_ownership,data=mydata,family=multinomial)
+summary(mtn)
+```
+Basically,term,interest rate,high grade seem to improve the payment of loan.
+```{r}
+##delete installment,outliers of annual income,and add interactions.
+mtn1<- vglm(loan_paid~loan_amnt+funded_amnt_inv+term+int_rate+grade+annual_inc+dti+home_ownership+grade*int_rate+annual_inc*funded_amnt_inv,data=mydata1,family=multinomial)
+summary(mtn1)
+AIC(mtn)
+AIC(mtn1)
+```
+##Mixed Binary Regression
+```{r}
+library(lme4)
+##Scaling numeric parameters:
+data3<-mydata
+data3$cgrade[data3$grade=="A"]<-1
+data3$cgrade[data3$grade=="B"]<-2
+data3$cgrade[data3$grade=="C"]<-3
+data3$cgrade[data3$grade=="D"]<-4
+data3$cgrade[data3$grade=="E"]<-5
+data3$cgrade[data3$grade=="F"]<-6
+data3$cgrade[data3$grade=="G"]<-7
+pvars <- c("loan_amnt","funded_amnt_inv",
+           "term","int_rate",
+           "annual_inc","dti")
+datasc <- data3
+datasc[pvars] <- lapply(datasc[pvars],scale)
+
+glmm1<-glmer(loan_paid~loan_amnt+funded_amnt_inv+term+int_rate+
+               annual_inc+dti+(1|grade),data=datasc,
+             family=binomial(link="logit"))
+print(glmm1)
+```
+```{r}
+head(ranef(glmm1)$grade)
+fixef(glmm1)
+head(coef(glmm1)$grade)
+```
+```{r, warning=FALSE}
+library(lmerTest)
+lmerTest::summary(glmm1)
+```
+
+```{r}
+glmm2<-glmer(loan_paid~loan_amnt+funded_amnt_inv+term+int_rate+annual_inc+
+               dti+home_ownership+
+               (1|grade)+(0+loan_amnt|grade)+(0+int_rate|grade) ,
+data=datasc , family=binomial(link="logit"))
+print(glmm2)
+```
+
+```{r}
+head(ranef(glmm2)$grade)
+fixef(glmm2)
+head(coef(glmm2)$grade)
+lmerTest::summary(glmm1)
+```
+
